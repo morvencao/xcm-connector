@@ -10,6 +10,7 @@ import (
 
 	operatorhelpers "github.com/openshift/library-go/pkg/operator/v1helpers"
 
+	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	// "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,7 +47,7 @@ func CreateCluster(server, accessToken string, managedCluster *clusterv1.Managed
 
 	if resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("failed to create cluster %s statuscode=%d, status=%s",
-			managedCluster.Name, resp.StatusCode, resp.Status)
+			managedCluster.GetName(), resp.StatusCode, resp.Status)
 	}
 
 	return nil
@@ -58,26 +59,10 @@ func toCluster(managedCluster *clusterv1.ManagedCluster) (*clusteropenapi.Cluste
 		return nil, fmt.Errorf("failed to get clustrer id for cluster %s", managedCluster.GetName())
 	}
 
-	// status := "Unknown"
-	// available := meta.FindStatusCondition(managedCluster.Status.Conditions, clusterv1.ManagedClusterConditionAvailable)
-	// if available != nil {
-	// 	switch available.Status {
-	// 	case metav1.ConditionTrue:
-	// 		status = "Available"
-	// 	case metav1.ConditionFalse:
-	// 		status = "Unavailable"
-	// 	}
-	// }
-
 	return &clusteropenapi.Cluster{
 		Kind:           New("Cluster"),
 		Id:             &clusterID,
 		ControlplaneId: &clusterID,
-		// Status:   status,
-		// Type:     findClusterClaims(managedCluster.Status.ClusterClaims, "product.open-cluster-management.io"),
-		// Version:  managedCluster.Status.Version.Kubernetes,
-		// Platform: findClusterClaims(managedCluster.Status.ClusterClaims, "platform.open-cluster-management.io"),
-		// Region:   findClusterClaims(managedCluster.Status.ClusterClaims, "region.open-cluster-management.io"),
 	}, nil
 }
 
@@ -120,7 +105,7 @@ func PostClusterLabels(server, accessToken string, managedCluster *clusterv1.Man
 
 	if resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("failed to post labels %s for cluster %s statuscode=%d, status=%s",
-			string(clusterLabelList), managedCluster.Name, resp.StatusCode, resp.Status)
+			string(clusterLabelList), managedCluster.GetName(), resp.StatusCode, resp.Status)
 	}
 
 	return nil
@@ -170,7 +155,7 @@ func RemoveClusterLabels(server, accessToken string, managedCluster *clusterv1.M
 
 		if resp.StatusCode != http.StatusNoContent {
 			errList = append(errList, fmt.Errorf("failed to delete cluster label key %s for cluster %s statuscode=%d, status=%s",
-				key, managedCluster.Name, resp.StatusCode, resp.Status))
+				key, managedCluster.GetName(), resp.StatusCode, resp.Status))
 			continue
 		}
 	}
@@ -211,7 +196,7 @@ func PostClusterStatus(server, accessToken string, managedCluster *clusterv1.Man
 
 	if resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("failed to post status %v for cluster %s statuscode=%d, status=%s",
-			clusterStatusList, managedCluster.Name, resp.StatusCode, resp.Status)
+			clusterStatusList, managedCluster.GetName(), resp.StatusCode, resp.Status)
 	}
 
 	return nil
@@ -230,6 +215,96 @@ func toClusterStatusList(contidions []metav1.Condition) *clusteropenapi.ClusterS
 	return &clusteropenapi.ClusterStatusList{
 		Kind:  "ClusterStatusList",
 		Items: clusterStatuses,
+	}
+}
+
+func CreateAddon(server, accessToken string, cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn) error {
+	clusterID := findClusterClaims(cluster.Status.ClusterClaims, "id.k8s.io")
+	if clusterID == "unknown" {
+		return fmt.Errorf("failed to get clustrer id for cluster %s", cluster.GetName())
+	}
+
+	clusterAddon := toClusterAddon(addon.GetName(), addon.Status.Conditions)
+	clusterAddonData, err := json.Marshal(clusterAddon)
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("%s/api/cluster_self_managed/v1/clusters/%s/addons/%s", server, clusterID, addon.GetName())
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(clusterAddonData))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
+	req.Header.Set("Authorization", fmt.Sprintf("AccessToken %s:%s", clusterID, accessToken))
+
+	// TODO: remove InsecureSkipVerify
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("failed to create addon %s/%s statuscode=%d, status=%s",
+			cluster.GetName(), addon.GetName(), resp.StatusCode, resp.Status)
+	}
+
+	return nil
+}
+
+func PostAddonStatus(server, accessToken string, cluster *clusterv1.ManagedCluster, addonName string, addContidions []metav1.Condition) error {
+	clusterID := findClusterClaims(cluster.Status.ClusterClaims, "id.k8s.io")
+	if clusterID == "unknown" {
+		return fmt.Errorf("failed to get clustrer id for cluster %s", cluster.GetName())
+	}
+
+	clusterAddonData, err := json.Marshal(toClusterAddon(addonName, addContidions))
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("%s/api/cluster_self_managed/v1/clusters/%s/addons/%s", server, clusterID, addonName)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(clusterAddonData))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json; charset=UTF-8")
+	req.Header.Set("Authorization", fmt.Sprintf("AccessToken %s:%s", clusterID, accessToken))
+
+	// TODO: remove InsecureSkipVerify
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("failed to post status %s for addon %s/%s statuscode=%d, status=%s",
+			clusterAddonData, cluster.GetName(), addonName, resp.StatusCode, resp.Status)
+	}
+
+	return nil
+}
+
+func toClusterAddon(addonName string, conditions []metav1.Condition) *clusteropenapi.ClusterAddon {
+	clusterAddonStatuses := make([]clusteropenapi.ClusterAddonStatus, len(conditions))
+	for i, cond := range conditions {
+		clusterAddonStatuses[i] = clusteropenapi.ClusterAddonStatus{
+			Type:             clusteropenapi.PtrString(cond.Type),
+			State:            clusteropenapi.PtrString(string(cond.Status)),
+			Message:          clusteropenapi.PtrString(cond.Message),
+			Reason:           clusteropenapi.PtrString(cond.Reason),
+			UpdatedTimestamp: presentTime(cond.LastTransitionTime.Time),
+		}
+	}
+
+	return &clusteropenapi.ClusterAddon{
+		Kind:   New("ClusterAddon"),
+		Id:     New(addonName),
+		Status: clusterAddonStatuses,
 	}
 }
 

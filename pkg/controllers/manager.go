@@ -7,10 +7,13 @@ import (
 
 	"github.com/spf13/pflag"
 
+	"github.com/morvencao/xcm-connector/pkg/controllers/addon"
 	"github.com/morvencao/xcm-connector/pkg/controllers/cluster"
 	"github.com/morvencao/xcm-connector/pkg/helpers"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
 
+	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
+	addoninformers "open-cluster-management.io/api/client/addon/informers/externalversions"
 	clusterclient "open-cluster-management.io/api/client/cluster/clientset/versioned"
 	clusterinformers "open-cluster-management.io/api/client/cluster/informers/externalversions"
 
@@ -100,11 +103,16 @@ func (o *ManagerOptions) Run(ctx context.Context, controllerContext *controllerc
 		return err
 	}
 
+	addOnClient, err := addonclient.NewForConfig(controlPlaneKubeConfig)
+	if err != nil {
+		return err
+	}
+
 	// retrieve access token
 	accessToken, err := helpers.RetrieveAccessToken(ctx, kubeClient)
 
-	// kubeInfomer := informers.NewSharedInformerFactory(kubeClient, 10*time.Minute)
 	clusterInformers := clusterinformers.NewSharedInformerFactory(clusterClient, 10*time.Minute)
+	addOnInformers := addoninformers.NewSharedInformerFactory(addOnClient, 10*time.Minute)
 
 	clusterController := cluster.NewClusterController(
 		clusterClient,
@@ -114,9 +122,20 @@ func (o *ManagerOptions) Run(ctx context.Context, controllerContext *controllerc
 		controllerContext.EventRecorder,
 	)
 
+	addonController := addon.NewAddonController(
+		clusterInformers.Cluster().V1().ManagedClusters(),
+		addOnClient,
+		addOnInformers.Addon().V1alpha1().ManagedClusterAddOns(),
+		o.XCMServer,
+		accessToken,
+		controllerContext.EventRecorder,
+	)
+
 	go clusterInformers.Start(ctx.Done())
+	go addOnInformers.Start(ctx.Done())
 
 	go clusterController.Run(ctx, 1)
+	go addonController.Run(ctx, 1)
 
 	<-ctx.Done()
 	return nil

@@ -25,6 +25,26 @@ import (
 	"k8s.io/klog/v2"
 )
 
+var InternlLabelKeyMap = map[string]bool{
+	"name":                          true,
+	"cloud":                         true,
+	"vendor":                        true,
+	"clusterID":                     true,
+	"local-cluster":                 true,
+	"openshiftVersion":              true,
+	"openshiftVersion-major":        true,
+	"openshiftVersion-major-minor":  true,
+	"velero.io/exclude-from-backup": true,
+	"cluster.open-cluster-management.io/clusterset":                        true,
+	"feature.open-cluster-management.io/addon-application-manager":         true,
+	"feature.open-cluster-management.io/addon-cert-policy-controller":      true,
+	"feature.open-cluster-management.io/addon-cluster-proxy":               true,
+	"feature.open-cluster-management.io/addon-config-policy-controller":    true,
+	"feature.open-cluster-management.io/addon-governance-policy-framework": true,
+	"feature.open-cluster-management.io/addon-iam-policy-controller":       true,
+	"feature.open-cluster-management.io/addon-work-manager":                true,
+}
+
 const ManagedClusterConditionConnected string = "ManagedClusterConditionConnected"
 
 type labelsChange struct {
@@ -74,6 +94,9 @@ func NewClusterController(
 				runtime.HandleError(fmt.Errorf("error to get object: %v", obj))
 				return
 			}
+			// updated added labels and status
+			c.updateClusterChangeLabels(cluster.GetName(), map[string]string{}, cluster.Labels)
+			c.updateClusterChangeStatus(cluster.GetName(), []metav1.Condition{}, cluster.Status.Conditions)
 			c.queue.Add(cluster.GetName())
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
@@ -161,22 +184,20 @@ func (c *clusterController) sync(ctx context.Context, syncCtx factory.SyncContex
 		c.clusterLabelsChangeMapMutex.RUnlock()
 
 		if len(labelsChanges.changedLabels) > 0 {
-			klog.Infof("posting cluster labels: %s", labelsChanges.changedLabels)
+			klog.Infof("Posting cluster labels: %s", labelsChanges.changedLabels)
 			if err := helpers.PostClusterLabels(c.xCMAPIServer, c.accessToken, cluster, labelsChanges.changedLabels); err != nil {
 				errList = append(errList, fmt.Errorf("failed to update labels %s for cluster %s: %v", labelsChanges.changedLabels, cluster.GetName(), err))
 			} else {
 				labelsChanges.changedLabels = make(map[string]string)
 			}
-			klog.Infof("after posting cluster labels: %s", labelsChanges.changedLabels)
 		}
 		if len(labelsChanges.removedLabelKeys) > 0 {
-			klog.Infof("removing cluster label keys: %s", labelsChanges.removedLabelKeys)
+			klog.Infof("Pemoving cluster labels with keys: %s", labelsChanges.removedLabelKeys)
 			if err := helpers.RemoveClusterLabels(c.xCMAPIServer, c.accessToken, cluster, labelsChanges.removedLabelKeys); err != nil {
 				errList = append(errList, fmt.Errorf("failed to remove label keys %s for cluster %s: %v", labelsChanges.removedLabelKeys, cluster.GetName(), err))
 			} else {
 				labelsChanges.removedLabelKeys = make([]string, 0)
 			}
-			klog.Infof("after removing cluster label keys: %s", labelsChanges.removedLabelKeys)
 		}
 
 		c.clusterLabelsChangeMapMutex.Lock()
@@ -237,6 +258,10 @@ func (c *clusterController) updateClusterChangeLabels(clusterName string, old, n
 	c.clusterLabelsChangeMapMutex.RUnlock()
 
 	for k, v := range new {
+		// skip internal label key
+		if InternlLabelKeyMap[k] {
+			continue
+		}
 		_, oldExists := old[k]
 		if !oldExists {
 			if labelsChanges.changedLabels == nil {
@@ -247,6 +272,10 @@ func (c *clusterController) updateClusterChangeLabels(clusterName string, old, n
 	}
 
 	for k := range old {
+		// skip internal label key
+		if InternlLabelKeyMap[k] {
+			continue
+		}
 		if _, exists := new[k]; !exists {
 			// check if in changedLabels
 			if _, existsInChangedLabels := labelsChanges.changedLabels[k]; existsInChangedLabels {
@@ -260,8 +289,6 @@ func (c *clusterController) updateClusterChangeLabels(clusterName string, old, n
 		}
 	}
 
-	klog.Infof("update cluster labels: %s", labelsChanges.changedLabels)
-	klog.Infof("update cluster labels removed keys: %s", labelsChanges.removedLabelKeys)
 	c.clusterLabelsChangeMapMutex.Lock()
 	c.clusterLabelsChangeMap[clusterName] = labelsChanges
 	c.clusterLabelsChangeMapMutex.Unlock()

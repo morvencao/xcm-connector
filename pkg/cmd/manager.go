@@ -9,7 +9,7 @@ import (
 	"github.com/morvencao/xcm-connector/pkg/version"
 )
 
-// NewManager generates a command to start kcp-ocm integration controller manager
+// NewManager generates a command to start xcm-connector controller manager
 func NewManager() *cobra.Command {
 	o := controllers.NewManagerOptions()
 	cmdConfig := controllercmd.NewControllerCommandConfig("xcm-connector", version.Get(), o.Run)

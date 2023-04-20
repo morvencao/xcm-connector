@@ -22,7 +22,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-// ManagerOptions defines the flags for kcp-ocm integration controller manager
+// ManagerOptions defines the flags for xcm-connector controller manager
 type ManagerOptions struct {
 	ControlPlaneKubeConfigFile string
 	XCMServer                  string
@@ -73,7 +73,7 @@ func (o *ManagerOptions) AddFlags(flags *pflag.FlagSet) {
 	// )
 }
 
-// Run starts all of controllers for kcp-ocm integration
+// Run starts all of controllers for xcm-connector
 func (o *ManagerOptions) Run(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
 	wait.Poll(5*time.Second, 60*time.Second, func() (bool, error) {
 		if _, err := os.Stat(o.ControlPlaneKubeConfigFile); err != nil {

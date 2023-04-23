@@ -17,7 +17,7 @@ spec:
       serviceAccountName: xcm-connector
       containers:
       - name: xcm-connector
-        image: quay.io/morvencao/xcm-connector:latest
+        image: quay.io/open-cluster-management/xcm-connector:latest
         imagePullPolicy: Always
         env:
         - name: POD_NAMESPACE
@@ -29,11 +29,11 @@ spec:
           - "controller"
           - "--disable-leader-election"
           - "--xcm-server=https://api.stage.openshift.com"
-          - "--control-plane-kubeconfig=/var/xcm-connector/kubeconfig"
-        volumeMounts:
-        - name: multicluster-controlplane-kubeconfig
-          mountPath: "/var/xcm-connector"
-      volumes:
-      - name: multicluster-controlplane-kubeconfig
-        secret:
-          secretName: multicluster-controlplane-kubeconfig
+      #     - "--control-plane-kubeconfig=/var/xcm-connector/kubeconfig"
+      #   volumeMounts:
+      #   - name: multicluster-controlplane-kubeconfig
+      #     mountPath: "/var/xcm-connector"
+      # volumes:
+      # - name: multicluster-controlplane-kubeconfig
+      #   secret:
+      #     secretName: multicluster-controlplane-kubeconfig

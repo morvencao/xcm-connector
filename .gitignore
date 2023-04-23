@@ -14,10 +14,13 @@
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
-./xcm-connector
 metrics*
 
+# Ignore built binaries
 bin
+/xcm-connector
+
+# Ignore kubeconfig and others
 hub-kubeconfigs
 hub-kubeconfig
 

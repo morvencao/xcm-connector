@@ -1,0 +1,15 @@
+namespace: xcm-connector
+
+resources:
+- ./namespace.yaml
+- ./service_account.yaml
+- ./clusterrole_binding.yaml
+- ./clusterrole.yaml
+- ./deployment.yaml
+
+images:
+- name: quay.io/open-cluster-management/xcm-connector:latest
+  newName: quay.io/morvencao/xcm-connector
+  newTag: latest
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization

@@ -75,13 +75,15 @@ func (o *ManagerOptions) AddFlags(flags *pflag.FlagSet) {
 
 // Run starts all of controllers for xcm-connector
 func (o *ManagerOptions) Run(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
-	wait.Poll(5*time.Second, 60*time.Second, func() (bool, error) {
+	if err := wait.Poll(5*time.Second, 60*time.Second, func() (bool, error) {
 		if _, err := os.Stat(o.ControlPlaneKubeConfigFile); err != nil {
 			return false, nil
 		}
 
 		return true, nil
-	})
+	}); err != nil {
+		return err
+	}
 
 	kubeConfig, err := clientcmd.BuildConfigFromFlags("", "")
 	if err != nil {
@@ -110,6 +112,9 @@ func (o *ManagerOptions) Run(ctx context.Context, controllerContext *controllerc
 
 	// retrieve access token
 	accessToken, err := helpers.RetrieveAccessToken(ctx, kubeClient)
+	if err != nil {
+		return err
+	}
 
 	clusterInformers := clusterinformers.NewSharedInformerFactory(clusterClient, 10*time.Minute)
 	addOnInformers := addoninformers.NewSharedInformerFactory(addOnClient, 10*time.Minute)

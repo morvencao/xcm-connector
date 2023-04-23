@@ -5,8 +5,8 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: cluster-admin
+  name: xcm-connector
 subjects:
   - kind: ServiceAccount
     name: xcm-connector
-    namespace: multicluster-controlplane
+    namespace: xcm-connector

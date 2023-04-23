@@ -1,34 +1,94 @@
+.DEFAULT_GOAL :=help
+
 SHELL :=/bin/bash
 
-all: build
-.PHONY: all
+VERSION ?=$(shell date +%s)
+IMAGE_TAG ?=$(VERSION)
+IMAGE_REGISTRY ?=quay.io/morvencao
+IMAGE ?=xcm-connector
+IMAGE_NAME ?=$(IMAGE_REGISTRY)/$(IMAGE):$(IMAGE_TAG)
 
-# Include the library makefile
-include $(addprefix ./vendor/github.com/openshift/build-machinery-go/make/, \
-	golang.mk \
-	targets/openshift/deps.mk \
-	targets/openshift/images.mk \
-	lib/tmp.mk \
-)
+KUBECTL ?=kubectl
+GOLANGCI_LINT_BIN :=$(shell go env GOPATH)/bin/golangci-lint
 
-# Image URL to use all building/pushing image targets;
-IMAGE ?= xcm-connector
-IMAGE_TAG?=latest
-IMAGE_REGISTRY ?= quay.io/skeeey
-IMAGE_NAME?=$(IMAGE_REGISTRY)/$(IMAGE):$(IMAGE_TAG)
-KUBECTL?=kubectl
-
-GIT_HOST ?= github.com/morvencao/xcm-connector
-BASE_DIR := $(shell basename $(PWD))
-DEST := $(GOPATH)/src/$(GIT_HOST)/$(BASE_DIR)
+GIT_HOST ?=github.com/morvencao/xcm-connector
+BASE_DIR :=$(shell basename $(PWD))
+DEST :=$(GOPATH)/src/$(GIT_HOST)/$(BASE_DIR)
 
 # Add packages to do unit test
 GO_TEST_PACKAGES :=./pkg/...
 
-# This will call a macro called "build-image" which will generate image specific targets based on the parameters:
-# $0 - macro name
-# $1 - target suffix
-# $2 - Dockerfile path
-# $3 - context directory for image build
-# It will generate target "image-$(1)" for building the image and binding it as a prerequisite to target "images".
-$(call build-image,$(IMAGE),$(IMAGE_REGISTRY)/$(IMAGE),./Dockerfile,.)
+# Prints a list of useful targets.
+help:
+	@echo ""
+	@echo "xCM Connector"
+	@echo ""
+	@echo "make verify               verify source code"
+	@echo "make lint                 run golangci-lint"
+	@echo "make build                build binaries"
+	@echo "make test                 run unit tests"
+	@echo "make image                build docker image"
+	@echo "make push                 push docker image"
+	@echo "make deploy               deploy via templates to local openshift instance"
+	@echo "make undeploy             undeploy from local openshift instance"
+	@echo "make clean                delete temporary generated files"
+	@echo "$(fake)"
+.PHONY: help
+
+# Verifies that source passes standard checks.
+verify:
+	go vet \
+		./cmd/... \
+		./pkg/...
+	! gofmt -l cmd pkg |\
+		sed 's/^/Unformatted file: /' |\
+		grep .
+.PHONY: verify
+
+# Runs our linter to verify that everything is following best practices
+# Requires golangci-lint to be installed @ $(go env GOPATH)/bin/golangci-lint
+lint:
+	$(GOLANGCI_LINT_BIN) run \
+		./cmd/... \
+		./pkg/...
+.PHONY: lint
+
+# Build binaries
+build:
+	go build ./cmd/xcm-connector
+.PHONY: build
+
+# Runs the unit tests.
+#
+# Args:
+#   TESTFLAGS: Flags to pass to `go test`. The `-v` argument is always passed.
+#
+# Examples:
+#   make test TESTFLAGS="-run TestSomething"
+test:
+	go test --format short-verbose -- -p 1 -v $(TESTFLAGS) \
+		./pkg/... \
+		./cmd/...
+.PHONY: test
+
+image:
+	docker build -t "$(IMAGE_NAME)" .
+.PHONY: image
+
+push: image
+	docker push "$(IMAGE_NAME)"
+.PHONY: push
+
+deploy:
+	kubectl apply -k ./deploy
+.PHONY: deploy
+
+undeploy:
+	kubectl delete -k ./deploy
+.PHONY: undeploy
+
+# Delete temporary files
+clean:
+	rm -rf \
+		xcm-connector \
+.PHONY: clean

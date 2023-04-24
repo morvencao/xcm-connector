@@ -75,15 +75,15 @@ func (o *ManagerOptions) AddFlags(flags *pflag.FlagSet) {
 
 // Run starts all of controllers for xcm-connector
 func (o *ManagerOptions) Run(ctx context.Context, controllerContext *controllercmd.ControllerContext) error {
-	if err := wait.Poll(5*time.Second, 60*time.Second, func() (bool, error) {
+	// ignore timeout error b/c ControlPlaneKubeConfigFile may be empty
+	// when xcm-connector is deployed alongside MCE
+	_ = wait.Poll(5*time.Second, 60*time.Second, func() (bool, error) {
 		if _, err := os.Stat(o.ControlPlaneKubeConfigFile); err != nil {
 			return false, nil
 		}
 
 		return true, nil
-	}); err != nil {
-		return err
-	}
+	})
 
 	kubeConfig, err := clientcmd.BuildConfigFromFlags("", "")
 	if err != nil {
